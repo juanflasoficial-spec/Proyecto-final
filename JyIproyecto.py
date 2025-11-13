@@ -29,7 +29,7 @@ Estudiantes:
       3) SPRITES/ANIMACIONES: reemplazar formas por sprites animados (Pac-Man y
          fantasmas); animación de muerte y parpadeo de fantasma asustado.
       4) RÉCORD (PERSISTENCIA): leer/guardar highscore en archivo `highscore.dat`.
-"""
+
 
 import pygame
 import sys
@@ -41,6 +41,10 @@ from collections import deque
 TILE = 32
 FPS = 60
 TOP_OFFSET = 64  # espacio para marcador HUD
+
+# ARCHIVO DE MÚSICA DE FONDO
+# Cambia el nombre del archivo para usar otra canción (debe estar en la misma carpeta)
+MUSIC_FILE = "pacman.mp3"
 
 # COLORES
 BLACK   = (0, 0, 0)
@@ -56,14 +60,14 @@ GREEN   = (50, 220, 120)
 GREY    = (60, 60, 60)
 
 # VELOCIDADES
-PACMAN_SPEED = 2.0  # píxeles/frame
+PACMAN_SPEED = 2.0
 GHOST_SPEED  = 1.8
 
 # -------------------------
 # MAPA (ASCII)
 # -------------------------
 MAP_LAYOUT = [
-"########################",  # ahora 24 '#'
+"########################",
 "#..........##..........#",
 "#.###.###..##..###.###.#",
 "#o###.###..##..###.###o#",
@@ -83,17 +87,12 @@ MAP_LAYOUT = [
 "########################",
 ]
 
-
-
 ROWS = len(MAP_LAYOUT)
 COLS = len(MAP_LAYOUT[0])
 assert all(len(row) == COLS for row in MAP_LAYOUT), "Mapa irregular: filas con longitudes distintas"
 
-# Dimensiones calculadas automáticamente
 WIDTH  = COLS * TILE
 HEIGHT = TOP_OFFSET + ROWS * TILE
-GRID_W = WIDTH
-GRID_H = HEIGHT - TOP_OFFSET
 
 # -------------------------
 # UTILIDADES
@@ -301,27 +300,36 @@ class Ghost:
 class Game:
     def __init__(self):
         pygame.init()
+
+        # AUDIO: inicializar mezclador y reproducir música de fondo
+        pygame.mixer.init()
+        try:
+            pygame.mixer.music.load(MUSIC_FILE)
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(-1)
+            print(f"Música de fondo reproducida: {MUSIC_FILE}")
+        except Exception as e:
+            print(f"No se pudo cargar la música '{MUSIC_FILE}':", e)
+
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Pac-Man (versión educativa)")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 22, bold=True)
+
         self.walls = []
         for r, row in enumerate(MAP_LAYOUT):
             for c, ch in enumerate(row):
                 if ch == '#':
                     self.walls.append(pygame.Rect(*grid_to_px(c, r), TILE, TILE))
-        p_spawns = []
-        g_spawns = []
+
+        p_spawns, g_spawns = [], []
         for r, row in enumerate(MAP_LAYOUT):
             for c, ch in enumerate(row):
-                if ch == 'P':
-                    p_spawns.append((c, r))
-                elif ch == 'G':
-                    g_spawns.append((c, r))
-        if not p_spawns:
-            p_spawns = [(1, 1)]
-        if not g_spawns:
-            g_spawns = [(COLS - 2, 1)]
+                if ch == 'P': p_spawns.append((c, r))
+                elif ch == 'G': g_spawns.append((c, r))
+        if not p_spawns: p_spawns = [(1, 1)]
+        if not g_spawns: g_spawns = [(COLS - 2, 1)]
+
         self.pacman = Pacman(*p_spawns[0])
         self.ghosts = [Ghost(*g_spawns[0], color=RED)]
         self.pellets = Pellets()
@@ -343,7 +351,12 @@ class Game:
                     elif e.key in (pygame.K_RIGHT, pygame.K_d): self.pacman.set_next_dir(1, 0)
                     elif e.key in (pygame.K_UP, pygame.K_w): self.pacman.set_next_dir(0, -1)
                     elif e.key in (pygame.K_DOWN, pygame.K_s): self.pacman.set_next_dir(0, 1)
-                    elif e.key == pygame.K_p: self.paused = not self.paused
+                    elif e.key == pygame.K_p:
+                        self.paused = not self.paused
+                        if self.paused:
+                            pygame.mixer.music.pause()
+                        else:
+                            pygame.mixer.music.unpause()
                 elif self.state == "gameover" and e.key == pygame.K_RETURN:
                     self.restart()
 
@@ -376,6 +389,7 @@ class Game:
         self.lives -= 1
         if self.lives <= 0:
             self.state = "gameover"
+            pygame.mixer.music.stop()
         else:
             self.pacman.reset()
             for g in self.ghosts:
@@ -389,6 +403,10 @@ class Game:
 
     def restart(self):
         self.__init__()
+        try:
+            pygame.mixer.music.play(-1)
+        except:
+            pass
 
     def draw_grid(self, surf):
         surf.fill(NAVY)
@@ -415,7 +433,7 @@ class Game:
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 200))
         surf.blit(overlay, (0, 0))
-        t1 = self.font.render("¡GAME OVER!", True, WHITE)
+        t1 = self.font.render("GAME OVER", True, WHITE)
         t2 = self.font.render("ENTER para reiniciar", True, WHITE)
         surf.blit(t1, (WIDTH//2 - t1.get_width()//2, HEIGHT//2 - 30))
         surf.blit(t2, (WIDTH//2 - t2.get_width()//2, HEIGHT//2 + 10))
@@ -429,7 +447,6 @@ class Game:
         self.draw_hud(self.screen)
         if self.state == "gameover":
             self.draw_gameover(self.screen)
-        pygame.display.flip()
 
     def run(self):
         while True:
@@ -439,4 +456,10 @@ class Game:
             self.clock.tick(FPS)
 
 if __name__ == "__main__":
-    Game().run()
+    game = Game()
+    while True:
+        game.handle_events()
+        game.update()
+        game.draw()
+        pygame.display.flip()
+        game.clock.tick(FPS)
